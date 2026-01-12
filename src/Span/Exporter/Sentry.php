@@ -12,22 +12,24 @@ use Utopia\Span\Span;
  */
 class Sentry implements Exporter
 {
-    private string $dsn;
     private string $endpoint;
     private string $publicKey;
     private string $projectId;
-    private ?string $environment;
 
     /**
      * Create a new Sentry exporter.
      *
      * @param string $dsn Sentry DSN (e.g., https://key@sentry.io/123)
      * @param string|null $environment Optional environment name (e.g., 'production')
+     * @param string|null $release Optional release/version identifier (e.g., commit hash)
+     * @param string|null $serverName Optional server name/identifier
      */
-    public function __construct(string $dsn, ?string $environment = null)
-    {
-        $this->dsn = $dsn;
-        $this->environment = $environment;
+    public function __construct(
+        private string $dsn,
+        private ?string $environment = null,
+        private ?string $release = null,
+        private ?string $serverName = null
+    ) {
         $this->parseDsn($dsn);
     }
 
@@ -103,6 +105,7 @@ class Sentry implements Exporter
         $traceId = (string) ($attributes['span.trace_id'] ?? '');
         $spanId = (string) ($attributes['span.id'] ?? '');
         $parentId = $attributes['span.parent_id'] ?? null;
+        $startedAt = (float) ($attributes['span.started_at'] ?? microtime(true));
         $finishedAt = (float) ($attributes['span.finished_at'] ?? microtime(true));
         $action = $span->getAction();
 
@@ -151,11 +154,18 @@ class Sentry implements Exporter
         $payloadData = [
             'level' => 'error',
             'platform' => 'php',
+            'sdk' => ['name' => 'utopia-php/span'],
+            'start_timestamp' => $startedAt,
             'timestamp' => $finishedAt,
             'transaction' => $action,
             'message' => $error->getMessage(),
             'contexts' => [
                 'trace' => $traceContext,
+                'runtime' => [
+                    'name' => 'php',
+                    'version' => PHP_VERSION,
+                    'sapi' => PHP_SAPI,
+                ],
             ],
             'exception' => [
                 'values' => [[
@@ -169,6 +179,14 @@ class Sentry implements Exporter
 
         if ($this->environment !== null) {
             $payloadData['environment'] = $this->environment;
+        }
+
+        if ($this->release !== null) {
+            $payloadData['release'] = $this->release;
+        }
+
+        if ($this->serverName !== null) {
+            $payloadData['server_name'] = $this->serverName;
         }
 
         $payload = json_encode($payloadData);

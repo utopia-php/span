@@ -403,6 +403,116 @@ class SpanTest extends TestCase
         $this->assertNull(Span::current());
     }
 
+    public function testPublishExportsToAllExporters(): void
+    {
+        $exported1 = [];
+        $exported2 = [];
+
+        Span::addExporter($this->createExporter($exported1));
+        Span::addExporter($this->createExporter($exported2));
+
+        Span::publish(['key' => 'value'], action: 'event');
+
+        $this->assertCount(1, $exported1);
+        $this->assertCount(1, $exported2);
+        $this->assertSame('event', $exported1[0]->getAction());
+        $this->assertSame('value', $exported1[0]->get('key'));
+    }
+
+    public function testPublishDoesNotRequireStorage(): void
+    {
+        Span::resetStorage();
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish(['key' => 'value']);
+
+        $this->assertCount(1, $exported);
+        $this->assertNull(Span::current());
+    }
+
+    public function testPublishDoesNotClearCurrentSpan(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+        $current = Span::init('request');
+
+        Span::publish(['event' => 'queued'], action: 'job.queued');
+
+        $this->assertSame($current, Span::current());
+        $this->assertCount(1, $exported);
+        $this->assertSame('job.queued', $exported[0]->getAction());
+    }
+
+    public function testPublishAcceptsError(): void
+    {
+        $exported = [];
+        $error = new RuntimeException('Test');
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish(error: $error);
+
+        $this->assertCount(1, $exported);
+        $this->assertSame($error, $exported[0]->getError());
+        $this->assertSame('error', $exported[0]->get('level'));
+    }
+
+    public function testPublishSetsLevelInfoByDefault(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish();
+
+        $this->assertSame('info', $exported[0]->get('level'));
+    }
+
+    public function testPublishAcceptsLevelOverride(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish(level: 'warning');
+
+        $this->assertSame('warning', $exported[0]->get('level'));
+    }
+
+    public function testPublishRespectsSampler(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported), fn (Span $s): bool => $s->get('publish') === true);
+
+        Span::publish(['publish' => false]);
+        Span::publish(['publish' => true]);
+
+        $this->assertCount(1, $exported);
+        $this->assertTrue($exported[0]->get('publish'));
+    }
+
+    public function testPublishIgnoresNonStringAttributeKeys(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish([0 => 'value', 'key' => 'kept']);
+
+        $this->assertCount(1, $exported);
+        $this->assertNull($exported[0]->get('0'));
+        $this->assertSame('kept', $exported[0]->get('key'));
+    }
+
+    public function testPublishIgnoresNonScalarAttributeValues(): void
+    {
+        $exported = [];
+        Span::addExporter($this->createExporter($exported));
+
+        Span::publish(['key' => [], 'valid' => true]);
+
+        $this->assertCount(1, $exported);
+        $this->assertNull($exported[0]->get('key'));
+        $this->assertTrue($exported[0]->get('valid'));
+    }
+
     public function testTraceIdIsUniqueBetweenSpans(): void
     {
         $span1 = new Span();

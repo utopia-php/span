@@ -158,6 +158,46 @@ class Span
     }
 
     /**
+     * Immediately publish attributes and an optional error to configured exporters.
+     *
+     * This does not use or mutate storage, so it can be used without an active span.
+     *
+     * @param array<array-key, mixed> $attributes Attributes to publish
+     * @param Throwable|null $error Exception to publish
+     * @param string $action What this published event represents
+     * @param string|null $level Level to export for this event
+     */
+    public static function publish(
+        array $attributes = [],
+        ?Throwable $error = null,
+        string $action = 'publish',
+        ?string $level = null
+    ): void {
+        $span = new self($action);
+
+        foreach ($attributes as $key => $value) {
+            if (!\is_string($key)) {
+                continue;
+            }
+
+            if (
+                !\is_string($value)
+                && !\is_int($value)
+                && !\is_float($value)
+                && !\is_bool($value)
+                && $value !== null
+            ) {
+                continue;
+            }
+
+            $span->set($key, $value);
+        }
+
+        $span->complete($level, $error);
+        self::exportSpan($span);
+    }
+
+    /**
      * Set an attribute on this span.
      *
      * @param string $key Attribute name (e.g., 'user.id', 'http.status')
@@ -251,6 +291,16 @@ class Span
      */
     public function finish(?string $level = null, ?Throwable $error = null): void
     {
+        $this->complete($level, $error);
+        self::exportSpan($this);
+
+        if (self::$storage instanceof \Utopia\Span\Storage\Storage) {
+            self::$storage->set(null);
+        }
+    }
+
+    private function complete(?string $level = null, ?Throwable $error = null): void
+    {
         if ($error instanceof \Throwable) {
             $this->setError($error);
         }
@@ -263,22 +313,21 @@ class Span
         $this->attributes['span.duration'] = $finishedAt - $startedAt;
 
         $this->attributes['level'] = $level ?? ($this->error instanceof \Throwable ? 'error' : 'info');
+    }
 
+    private static function exportSpan(self $span): void
+    {
         foreach (self::$exporters as $config) {
             try {
                 $exporter = $config['exporter'];
                 $sampler = $config['sampler'];
 
-                if ($sampler === null || $sampler($this)) {
-                    $exporter->export($this);
+                if ($sampler === null || $sampler($span)) {
+                    $exporter->export($span);
                 }
             } catch (\Throwable) {
                 // Tracing should never break the application
             }
-        }
-
-        if (self::$storage instanceof \Utopia\Span\Storage\Storage) {
-            self::$storage->set(null);
         }
     }
 }

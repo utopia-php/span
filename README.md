@@ -96,6 +96,33 @@ Span::add('warning', 'retry scheduled');
 Span::add('warning.message', $message);
 ```
 
+### Immediate Publishing
+
+Use `publish()` to send attributes and an optional error to configured exporters without creating or storing a current span:
+
+```php
+Span::publish([
+    'event' => 'job.queued',
+    'queue.name' => 'emails',
+    'message.id' => $id,
+], action: 'job.queued');
+```
+
+Published events include the same built-in metadata as finished spans and pass through the same exporter samplers. Storage is not required and the current span is not changed.
+
+```php
+try {
+    // ...
+} catch (Throwable $e) {
+    Span::publish([
+        'job.name' => 'sync-user',
+        'user.id' => $userId,
+    ], error: $e, action: 'job.failed');
+
+    throw $e;
+}
+```
+
 ### Distributed Tracing
 
 Propagate trace context across services using W3C Trace Context headers:
@@ -236,6 +263,7 @@ $this->assertEquals('http.request', $spans[0]->get('action'));
 | `init(string $action, ?string $traceparent): Span`   | Create and store a new span           |
 | `current(): ?Span`                                   | Get the current span                  |
 | `add(string $key, scalar $value)`                    | Set attribute on current span         |
+| `publish(array $attributes = [], ?Throwable $error = null, string $action = 'publish', ?string $level = null): void` | Export an immediate event without storage |
 | `traceparent(): ?string`                             | Get traceparent header from current span |
 
 ### Span (instance)

@@ -1,7 +1,7 @@
 # Utopia Span
 
 > [!IMPORTANT]
-> This repository is a read-only mirror of the [utopia-php monorepo](https://github.com/utopia-php/monorepo). Development happens in [`packages/span`](https://github.com/utopia-php/monorepo/tree/main/packages/span) — please open issues and pull requests there.
+> This repository is a read-only mirror of [`packages/span`](https://github.com/appwrite/appwrite/tree/main/packages/span) in [appwrite/appwrite](https://github.com/appwrite/appwrite). Development happens there — please open issues and pull requests against appwrite/appwrite.
 
 A simple, memory-safe span tracing library for PHP with Swoole coroutine support.
 
@@ -195,7 +195,7 @@ Only exports error spans with full stacktraces. Non-error spans are skipped, eve
 
 Pass any PSR-18 client as `client` to control the HTTP transport. Workers can
 inject a coroutine-safe `Utopia\Client\Pool`. When omitted, the exporter creates
-a `Utopia\Client` using its cURL adapter.
+a `Utopia\Client\Client` using its cURL adapter.
 
 ```php
 Span::setExporters(new Exporter\Sentry(
